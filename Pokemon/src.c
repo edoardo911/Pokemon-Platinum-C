@@ -11,7 +11,7 @@
 #define VERSION				"1.0.0"
 #define AUTHOR 				"Edoardo Stucchi"
 #define MOSSE				3
-#define FLAGS				4
+#define FLAGS				6
 #define ITEMS				1
 #define MAX_NPCS			16
 #define DEBUG_MODE			TRUE
@@ -86,6 +86,9 @@
 #define MOSSA_AZIONE		0
 #define MOSSA_GRAFFIO		1
 #define MOSSA_BOTTA			2
+#define MOSSA_RITIRATA		3
+#define MOSSA_FULMISGUARDO	4
+#define MOSSA_RUGGITO		5
 //PKM
 #define PKM_TARTWIG			0
 #define PKM_CHIMCHAR		1
@@ -121,10 +124,15 @@ typedef struct
 	int ps;
 	int psMax;
 	int atk;
+	int bAtk;
 	int def;
+	int bDef;
 	int atkSp;
+	int bAtkSp;
 	int defSp;
+	int bDefSp;
 	int speed;
+	int bSpeed;
 	int precision;
 	int elusion;
 	int numMosse;
@@ -132,8 +140,8 @@ typedef struct
 	int lvl;
 	int nextExp;
     int lvlToEvolve;
+    int stadio;
     char nome[64];
-    boolean catturabile;
     boolean item;
     item strum;
     mossa mosse[4];
@@ -166,11 +174,12 @@ typedef struct
 } tile;
 
 //variabili globali
-allenatore you, rivale, npcs[MAX_NPCS];
+allenatore you, npcs[MAX_NPCS];
 tile mappa[128][128];
 item items[ITEMS];
-boolean flags[FLAGS];
+boolean isInWater, isInCave, flags[FLAGS];
 int idMappa = 0, r = 0, c = 0;
+char rivale[64];
 
 //funzioni
 void gameLogic();
@@ -181,6 +190,9 @@ void stampaMappa(tile*, boolean);
 void setColor(int);
 void delay(int);
 void showConsoleCursor(boolean);
+void loadMossePool(mossa*, int);
+void checkNextMossa(pokemon*);
+void heal();
 
 //eventi
 void event0();
@@ -216,17 +228,22 @@ void event28();
 void event29();
 void event30();
 void event31();
+void event32();
 
 //funzioni di battaglia
 boolean lotta(allenatore*, int, int);
 void lvlUp(pokemon*, int);
 void stampaPokemon(allenatore*, int, int);
 void funzioneMossa(pokemon*, pokemon*, int);
+void learnMossa(pokemon*, int);
 
 int main()
 {
 	int cont = 0, i, j;
 	char input;
+
+	isInWater = FALSE;
+	isInCave = FALSE;
 
 	loadItems();
 	showConsoleCursor(FALSE);
@@ -281,13 +298,6 @@ int main()
 		you.catturati = 0;
 		strcpy(you.occupazione, "");
 		you.dir = DIRECTION_UP;
-		rivale.numPokemon = 0;
-		rivale.money = 0;
-		rivale.sex = SEX_MALE;
-		rivale.catturati = 0;
-		rivale.medals = 0;
-		strcpy(rivale.occupazione, "Rivale");
-		rivale.dir = DIRECTION_UP;
 
 		//discorso iniziale del prof. rowan
 		printf("Ciao, felice di conoscerti!\n");
@@ -575,21 +585,21 @@ int main()
 				do
 				{
 					fflush(stdin);
-					gets(rivale.nome);
-				} while(strcmp(rivale.nome, "") == 0 || strcmp(rivale.nome, "\0") == 0);
+					gets(rivale);
+				} while(strcmp(rivale, "") == 0 || strcmp(rivale, "\0") == 0);
 				showConsoleCursor(FALSE);
 				break;
 			case 1:
-				strcpy(rivale.nome, "Alvise");
+				strcpy(rivale, "Alvise");
 				break;
 			case 2:
-				strcpy(rivale.nome, "Rolando");
+				strcpy(rivale, "Rolando");
 				break;
 			case 3:
-				strcpy(rivale.nome, "Ricky");
+				strcpy(rivale, "Ricky");
 				break;
 			case 4:
-				strcpy(rivale.nome, "Gino");
+				strcpy(rivale, "Gino");
 				break;
 			}
 
@@ -599,7 +609,7 @@ int main()
             do
 			{
 				system("cls");
-				printf("Hai detto %s?\nSi chiama cosi' il tuo amico?\n", rivale.nome);
+				printf("Hai detto %s?\nSi chiama cosi' il tuo amico?\n", rivale);
 
 				if(cont == 0)
 					printf("> SI' <\n");
@@ -710,10 +720,6 @@ int main()
 				fscanf(save, "%d\n", &you.squadra[i].defSp);
 				fseek(save, 11, SEEK_CUR);
 				fscanf(save, "%d\n", &you.squadra[i].speed);
-				fseek(save, 10, SEEK_CUR);
-				fscanf(save, "%d\n", &you.squadra[i].precision);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &you.squadra[i].elusion);
 				fseek(save, 14, SEEK_CUR);
 				fscanf(save, "%d\n", &you.squadra[i].numMosse);
 				fseek(save, 9, SEEK_CUR);
@@ -724,8 +730,18 @@ int main()
 				fscanf(save, "%d\n", &you.squadra[i].nextExp);
 				fseek(save, 17, SEEK_CUR);
 				fscanf(save, "%d\n", &you.squadra[i].lvlToEvolve);
+				fseek(save, 12, SEEK_CUR);
+				fscanf(save, "%d\n", &you.squadra[i].stadio);
 				fseek(save, 10, SEEK_CUR);
 				fscanf(save, "%s\n", &you.squadra[i].nome);
+
+				you.squadra[i].precision = 100;
+				you.squadra[i].elusion = 0;
+				you.squadra[i].bAtk = you.squadra[i].atk;
+				you.squadra[i].bDef = you.squadra[i].def;
+				you.squadra[i].bAtkSp = you.squadra[i].atkSp;
+				you.squadra[i].bDefSp = you.squadra[i].defSp;
+				you.squadra[i].bSpeed = you.squadra[i].speed;
 
 				for(j = 0; j < you.squadra[i].numMosse; j++)
 				{
@@ -743,85 +759,18 @@ int main()
 					fscanf(save, "%d\n", &you.squadra[i].mosse[j].tipo);
 					fseek(save, 13, SEEK_CUR);
 					fgets(you.squadra[i].mosse[j].nome, 64, save);
+					you.squadra[i].mosse[j].nome[strlen(you.squadra[i].mosse[j].nome) - 1] = '\0';
 				}
 			}
 
             fseek(save, 7, SEEK_CUR);
-            fgets(rivale.nome, 64, save);
-            rivale.nome[strlen(rivale.nome) - 1] = '\0';
-            fseek(save, 14, SEEK_CUR);
-            fgets(rivale.occupazione, 64, save);
-            rivale.occupazione[strlen(rivale.occupazione) - 1] = '\0';
-            fscanf(save, "r_money=%d\n", &rivale.money);
-            fscanf(save, "r_catturati=%d\n", &rivale.catturati);
-            fscanf(save, "r_dir=%d\n", &rivale.dir);
-            fscanf(save, "r_sex=%d\n", &rivale.sex);
-            fscanf(save, "r_numPokemon=%d\n", &rivale.numPokemon);
-            fscanf(save, "r_medals=%d\n", &rivale.medals);
+            fgets(rivale, 64, save);
+            rivale[strlen(rivale) - 1] = '\0';
 
-            for(i = 0; i < rivale.numPokemon; i++)
-			{
-				fseek(save, 8, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].id);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].sex);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].tipo1);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].tipo2);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].state);
-				fseek(save, 8, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].ps);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].psMax);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].atk);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].def);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].atkSp);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].defSp);
-				fseek(save, 11, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].speed);
-				fseek(save, 10, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].precision);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].elusion);
-				fseek(save, 14, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].numMosse);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].exp);
-				fseek(save, 9, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].lvl);
-				fseek(save, 13, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].nextExp);
-				fseek(save, 17, SEEK_CUR);
-				fscanf(save, "%d\n", &rivale.squadra[i].lvlToEvolve);
-				fseek(save, 10, SEEK_CUR);
-				fscanf(save, "%s\n", &rivale.squadra[i].nome);
-
-				for(j = 0; j < rivale.squadra[i].numMosse; j++)
-				{
-					fseek(save, 11, SEEK_CUR);
-					fscanf(save, "%d\n", &rivale.squadra[i].mosse[j].id);
-					fseek(save, 11, SEEK_CUR);
-					fscanf(save, "%d\n", &rivale.squadra[i].mosse[j].pp);
-					fseek(save, 14, SEEK_CUR);
-					fscanf(save, "%d\n", &rivale.squadra[i].mosse[j].ppMax);
-					fseek(save, 12, SEEK_CUR);
-					fscanf(save, "%d\n", &rivale.squadra[i].mosse[j].atk);
-					fseek(save, 18, SEEK_CUR);
-					fscanf(save, "%d\n", &rivale.squadra[i].mosse[j].precision);
-					fseek(save, 13, SEEK_CUR);
-					fscanf(save, "%d\n", &rivale.squadra[i].mosse[j].tipo);
-					fseek(save, 13, SEEK_CUR);
-					fgets(rivale.squadra[i].mosse[j].nome, 64, save);
-				}
-			}
             for(i = 0; i < ITEMS; i++)
 				fscanf(save, "%d\n", &items[i].amount);
+
+			fscanf(save, "%d\n", &isInWater);
 
             for(i = 0; i < FLAGS; i++)
 				fscanf(save, "%d\n", &flags[i]);
@@ -829,7 +778,6 @@ int main()
 
 		fclose(save);
 
-		//carica partita
 		loadMappa(idMappa, (tile*) mappa, realX, realY);
 		gameLogic();
 	}
@@ -844,6 +792,8 @@ void gameLogic()
 	char input;
 	int cont, i;
 	boolean flag = FALSE;
+
+	getch();
 
 	while(!flag)
 	{
@@ -1064,6 +1014,8 @@ void gameLogic()
 								cont++;
 						}
 					} while(in != 'e' && in != 13);
+
+					if(in == 13) {} //opzioni oggetto
 					break;
 				}
 				case 3: //nome del giocatore
@@ -1114,13 +1066,12 @@ void gameLogic()
 							fprintf(save, "y_s%d_atkSp=%d\n", i, you.squadra[i].atkSp);
 							fprintf(save, "y_s%d_defSp=%d\n", i, you.squadra[i].defSp);
 							fprintf(save, "y_s%d_speed=%d\n", i, you.squadra[i].speed);
-							fprintf(save, "y_s%d_prec=%d\n", i, you.squadra[i].precision);
-							fprintf(save, "y_s%d_elu=%d\n", i, you.squadra[i].elusion);
 							fprintf(save, "y_s%d_numMosse=%d\n", i, you.squadra[i].numMosse);
 							fprintf(save, "y_s%d_exp=%d\n", i, you.squadra[i].exp);
 							fprintf(save, "y_s%d_lvl=%d\n", i, you.squadra[i].lvl);
 							fprintf(save, "y_s%d_nextExp=%d\n", i, you.squadra[i].nextExp);
 							fprintf(save, "y_s%d_lvlToEvolve=%d\n", i, you.squadra[i].lvlToEvolve);
+							fprintf(save, "y_s%d_stadio=%d\n", i, you.squadra[i].stadio);
 							fprintf(save, "y_s%d_nome=%s\n", i, you.squadra[i].nome);
 
 							for(j = 0; j < you.squadra[i].numMosse; j++)
@@ -1135,52 +1086,12 @@ void gameLogic()
 							}
 						}
 
-						fprintf(save, "r_nome=%s\n", rivale.nome);
-						fprintf(save, "r_occupazione=%s\n", rivale.occupazione);
-						fprintf(save, "r_money=%d\n", rivale.money);
-						fprintf(save, "r_catturati=%d\n", rivale.catturati);
-						fprintf(save, "r_dir=%d\n", rivale.dir);
-						fprintf(save, "r_sex=%d\n", rivale.sex);
-						fprintf(save, "r_numPokemon=%d\n", rivale.numPokemon);
-						fprintf(save, "r_medals=%d\n", rivale.medals);
-
-						for(i = 0; i < rivale.numPokemon; i++)
-						{
-							fprintf(save, "r_s%d_id=%d\n", i, rivale.squadra[i].id);
-							fprintf(save, "r_s%d_sex=%d\n", i, rivale.squadra[i].sex);
-							fprintf(save, "r_s%d_tipo1=%d\n", i, rivale.squadra[i].tipo1);
-							fprintf(save, "r_s%d_tipo2=%d\n", i, rivale.squadra[i].tipo2);
-							fprintf(save, "r_s%d_state=%d\n", i, rivale.squadra[i].state);
-							fprintf(save, "r_s%d_ps=%d\n", i, rivale.squadra[i].ps);
-							fprintf(save, "r_s%d_psMax=%d\n", i, rivale.squadra[i].psMax);
-							fprintf(save, "r_s%d_atk=%d\n", i, rivale.squadra[i].atk);
-							fprintf(save, "r_s%d_def=%d\n", i, rivale.squadra[i].def);
-							fprintf(save, "r_s%d_atkSp=%d\n", i, rivale.squadra[i].atkSp);
-							fprintf(save, "r_s%d_defSp=%d\n", i, rivale.squadra[i].defSp);
-							fprintf(save, "r_s%d_speed=%d\n", i, rivale.squadra[i].speed);
-							fprintf(save, "r_s%d_prec=%d\n", i, rivale.squadra[i].precision);
-							fprintf(save, "r_s%d_elu=%d\n", i, rivale.squadra[i].elusion);
-							fprintf(save, "r_s%d_numMosse=%d\n", i, rivale.squadra[i].numMosse);
-							fprintf(save, "r_s%d_exp=%d\n", i, rivale.squadra[i].exp);
-							fprintf(save, "r_s%d_lvl=%d\n", i, rivale.squadra[i].lvl);
-							fprintf(save, "r_s%d_nextExp=%d\n", i, rivale.squadra[i].nextExp);
-							fprintf(save, "r_s%d_lvlToEvolve=%d\n", i, rivale.squadra[i].lvlToEvolve);
-							fprintf(save, "r_s%d_nome=%s\n", i, rivale.squadra[i].nome);
-
-							for(j = 0; j < rivale.squadra[i].numMosse; j++)
-							{
-								fprintf(save, "r_s%d_m%d_id=%d\n", i, j, rivale.squadra[i].mosse[j].id);
-								fprintf(save, "r_s%d_m%d_pp=%d\n", i, j, rivale.squadra[i].mosse[j].pp);
-								fprintf(save, "r_s%d_m%d_ppMax=%d\n", i, j, rivale.squadra[i].mosse[j].ppMax);
-								fprintf(save, "r_s%d_m%d_atk=%d\n", i, j, rivale.squadra[i].mosse[j].atk);
-								fprintf(save, "r_s%d_m%d_precision=%d\n", i, j, rivale.squadra[i].mosse[j].precision);
-								fprintf(save, "r_s%d_m%d_tipo=%d\n", i, j, rivale.squadra[i].mosse[j].tipo);
-								fprintf(save, "r_s%d_m%d_nome=%s\n", i, j, rivale.squadra[i].mosse[j].nome);
-							}
-						}
+						fprintf(save, "r_nome=%s\n", rivale);
 
 						for(i = 0; i < ITEMS; i++)
-							fprintf(save, "%d\n", i, items[i].amount);
+							fprintf(save, "%d\n", items[i].amount);
+
+						fprintf(save, "%d\n", isInWater);
 
 						for(i = 0; i < FLAGS; i++)
 							fprintf(save, "%d\n", flags[i]);
@@ -1255,6 +1166,39 @@ void gameLogic()
 		if((*((tile*) mappa + (you.y * c) + you.x)).isEvento && (*((tile*) mappa + (you.y * c) + you.x)).tipo == EVENT_WALK && (input == 97 || input == 100 || input == 115 || input == 119))
 			(*((tile*) mappa + (you.y * c) + you.x)).action();
 	}
+}
+
+void loadMossePool(mossa *mosse, int id) {}
+
+void checkNextMossa(pokemon *pkm)
+{
+	char nomeFile[30];
+	int i;
+	sprintf(nomeFile, "data/mossePool/pkm%d.data", pkm->id);
+	FILE *fp = fopen(nomeFile, "r");
+
+	if(fp)
+	{
+		while(!feof(fp))
+		{
+			int lvl, stadio, id;
+			fscanf(fp, "%d; %d; %d\n", &lvl, &stadio, &id);
+
+			if(lvl == pkm->lvl && stadio == pkm->stadio)
+			{
+				learnMossa(pkm, id);
+				break;
+			}
+		}
+	}
+	else
+	{
+		setColor(COLOR_RED);
+        fprintf(stderr, "Error Opening %s.\n", nomeFile);
+        setColor(COLOR_WHITE);
+	}
+
+	fclose(fp);
 }
 
 void loadMossa(mossa *m, int id)
@@ -1594,6 +1538,12 @@ void loadMappa(int id, tile* mappa, int x, int y)
 						(*(mappa + i)).tileChar = SIMBOLO_NONE;
 						(*(mappa + i)).action = event31;
 					}
+					else if(event == 33)
+					{
+						(*(mappa + i)).tipo = EVENT_WALK;
+						(*(mappa + i)).tileChar = SIMBOLO_NONE;
+						(*(mappa + i)).action = event32;
+					}
 				}
 				else if(ch == SIMBOLO_ACQUA_BASSA)
 				{
@@ -1925,18 +1875,46 @@ void event3_0()
 
 void event3_1()
 {
-	stampaMappa((tile*) mappa, FALSE);
-	printf("Mamma: %s!\n", you.nome);
-	getch();
-	stampaMappa((tile*) mappa, FALSE);
-	printf("Mamma: %s ti stava cercando poco fa.\n", rivale.nome);
-	getch();
-	stampaMappa((tile*) mappa, FALSE);
-	printf("Mamma: Credo sia andato a casa sua.\n");
-	getch();
-	stampaMappa((tile*) mappa, FALSE);
-	printf("Mamma: E mi raccomando, attento all'erba alta.\n");
-	getch();
+	if(!flags[2])
+	{
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: %s!\n", you.nome);
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: %s ti stava cercando poco fa.\n", rivale);
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: Credo sia andato a casa sua.\n");
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: E mi raccomando, attento all'erba alta.\n");
+		getch();
+	}
+	else if(!flags[4])
+	{
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: Perche' non vai a ringraziare il prof. Rowan?\n");
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: Il suo laboratorio si trova a Sabbiafine.\n");
+		getch();
+	}
+	else
+	{
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: %s, sei tornato!\n", you.nome);
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: Aspetta, fammi curare la tua squadra pokemon.");
+		getch();
+
+		heal();
+		delay(3000);
+
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: Buona fortuna!\n");
+		getch();
+	}
 }
 
 //evento 4
@@ -1952,7 +1930,7 @@ void event8() { delay(1000); idMappa = 3; loadMappa(idMappa, (tile*) mappa, 6, 4
 //evento 9
 void event9() { delay(1000); idMappa = 4; loadMappa(idMappa, (tile*) mappa, 6, 4); }
 //evento 10
-void event10() { printf("Casa di %s\n", rivale.nome); getch(); }
+void event10() { printf("Casa di %s\n", rivale); getch(); }
 //evento 11
 void event11() { delay(1000); idMappa = 5; loadMappa(idMappa, (tile*) mappa, 6, 4); }
 //evento 12
@@ -1988,7 +1966,7 @@ void event18()
 {
     if(!flags[1])
 	{
-		printf("%s e' al piano di sopra.\n", rivale.nome);
+		printf("%s e' al piano di sopra.\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
 		printf("Quel ragazzo non sta mai fermo...\n");
@@ -1996,7 +1974,7 @@ void event18()
 	}
 	else
 	{
-		printf("%s e' scappato fuori!\n", rivale.nome);
+		printf("%s e' scappato fuori!\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
 		printf("Quel ragazzo non sta mai fermo...\n");
@@ -2077,13 +2055,13 @@ void event21() { delay(1000); idMappa = 4; loadMappa(idMappa, (tile*) mappa, 3, 
 //evento 22
 void event22()
 {
-	if(!flags[1])
+	if(!flags[1] || (flags[1] && !flags[5]))
 	{
 		stampaMappa((tile*) mappa, FALSE);
 		printf("Hey, %s!\n", you.nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s ti stava cercando!\n", rivale.nome);
+		printf("%s ti stava cercando!\n", rivale);
 		getch();
 		you.y++;
 	}
@@ -2098,13 +2076,13 @@ void event23()
 		printf("Hey, %s!\n", you.nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s ti stava cercando!\n", rivale.nome);
+		printf("%s ti stava cercando!\n", rivale);
 		getch();
 	}
 	else
 	{
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s si trova sul percorso 1.\n", rivale.nome);
+		printf("%s si trova sul percorso 1.\n", rivale);
 		getch();
 	}
 }
@@ -2193,22 +2171,22 @@ void event31()
 			stampaMappa((tile*) mappa, FALSE);
 		}
 
-		printf("%s: %s!\n", rivale.nome, you.nome);
+		printf("%s: %s!\n", rivale, you.nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Per andare al laboratorio del prof Rowan dobbiamo passare questo percorso.\n", rivale.nome);
+		printf("%s: Per andare al laboratorio del prof Rowan dobbiamo passare questo percorso.\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Come dici? Hai paura dell'erba alta?\n", rivale.nome);
+		printf("%s: Come dici? Hai paura dell'erba alta?\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Ma si', basta evitarla.\n", rivale.nome);
+		printf("%s: Ma si', basta evitarla.\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Sei pronto?\n", rivale.nome);
+		printf("%s: Sei pronto?\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: 3... ", rivale.nome);
+		printf("%s: 3... ", rivale);
 		getch();
 		printf("2... ");
 		getch();
@@ -2235,10 +2213,10 @@ void event31()
 		}
 
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Ma tu...\n", rivale.nome);
+		printf("%s: Ma tu...\n", rivale);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Sei il Prof. Rowan!\n", rivale.nome);
+		printf("%s: Sei il Prof. Rowan!\n", rivale);
 		getch();
 
 		for(i = 0; i < 4; i++)
@@ -2261,7 +2239,7 @@ void event31()
 		printf("Voi amate davvero i pokemon?\n");
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Cosa? Ce lo puo' chiedere anche 100 volte e la nostra risposta sara' sempre di si'!\n", rivale.nome);
+		printf("%s: Cosa? Ce lo puo' chiedere anche 100 volte e la nostra risposta sara' sempre di si'!\n", rivale);
 		getch();
 
 		while(!answerYes)
@@ -2271,7 +2249,7 @@ void event31()
 			do
 			{
 				stampaMappa((tile*) mappa, FALSE);
-				printf("%s: Vero %s?\n", rivale.nome, you.nome);
+				printf("%s: Vero %s?\n", rivale, you.nome);
 
 				if(cont == 0)
 					printf("> SI' <\n");
@@ -2306,10 +2284,10 @@ void event31()
 			if(cont == 1)
 			{
 				stampaMappa((tile*) mappa, FALSE);
-				printf("%s: Stai scherzando?\n", rivale.nome);
+				printf("%s: Stai scherzando?\n", rivale);
 				getch();
 				stampaMappa((tile*) mappa, FALSE);
-				printf("%s: Cosa? Ce lo puo' chiedere anche 100 volte e la nostra risposta sara' sempre di si'!\n", rivale.nome);
+				printf("%s: Cosa? Ce lo puo' chiedere anche 100 volte e la nostra risposta sara' sempre di si'!\n", rivale);
 				getch();
 			}
 			else if(cont == 0)
@@ -2324,7 +2302,7 @@ void event31()
 		(*((tile*) mappa + ((npcs[1].y + 1) * c) + npcs[1].x)).color = COLOR_BOLD_YELLOW;
 		stampaMappa((tile*) mappa, FALSE);
 		delay(500);
-		printf("%s: Ok, %s, faro' scegliere prima a te.\n", rivale.nome, you.nome);
+		printf("%s: Ok, %s, faro' scegliere prima a te.\n", rivale, you.nome);
 		getch();
 
 		answerYes = FALSE;
@@ -2418,6 +2396,11 @@ void event31()
 		stampaMappa((tile*) mappa, FALSE);
 		printf("%s ottiene ", you.nome);
 
+		allenatore enemy;
+		strcpy(enemy.nome, rivale);
+		strcpy(enemy.occupazione, "Rivale");
+		enemy.numPokemon = 1;
+
 		if(cont == 0)
 		{
 			you.squadra[0].id = PKM_TARTWIG;
@@ -2426,42 +2409,54 @@ void event31()
 			you.squadra[0].ps = 19;
 			you.squadra[0].psMax = 19;
 			you.squadra[0].atk = 9;
+			you.squadra[0].bAtk = 9;
 			you.squadra[0].def = 12;
+			you.squadra[0].bDef = 12;
 			you.squadra[0].atkSp = 7;
+			you.squadra[0].bAtkSp = 7;
 			you.squadra[0].defSp = 10;
+			you.squadra[0].bDefSp = 10;
 			you.squadra[0].speed = 13;
+			you.squadra[0].bSpeed = 10;
 			you.squadra[0].precision = 100;
 			you.squadra[0].elusion = 0;
-			you.squadra[0].numMosse = 1;
+			you.squadra[0].numMosse = 2;
 			you.squadra[0].exp = 0;
 			you.squadra[0].lvl = 5;
 			you.squadra[0].nextExp = 30;
 			you.squadra[0].lvlToEvolve = 18;
+			you.squadra[0].stadio = 0;
 			strcpy(you.squadra[0].nome, "Tartwig");
-			you.squadra[0].catturabile = FALSE;
 			you.squadra[0].item = FALSE;
 			loadMossa(&you.squadra[0].mosse[0], MOSSA_AZIONE);
-			rivale.squadra[0].id = PKM_CHIMCHAR;
-			rivale.squadra[0].tipo1 = TIPO_FUOCO;
-			rivale.squadra[0].state = STATE_NORMAL;
-			rivale.squadra[0].ps = 21;
-			rivale.squadra[0].psMax = 21;
-			rivale.squadra[0].atk = 11;
-			rivale.squadra[0].def = 9;
-			rivale.squadra[0].atkSp = 9;
-			rivale.squadra[0].defSp = 7;
-			rivale.squadra[0].speed = 10;
-			rivale.squadra[0].precision = 100;
-			rivale.squadra[0].elusion = 0;
-			rivale.squadra[0].numMosse = 1;
-			rivale.squadra[0].exp = 0;
-			rivale.squadra[0].lvl = 5;
-			rivale.squadra[0].nextExp = 35;
-			rivale.squadra[0].lvlToEvolve = 14;
-			strcpy(rivale.squadra[0].nome, "Chimchar");
-			rivale.squadra[0].catturabile = FALSE;
-			rivale.squadra[0].item = FALSE;
-			loadMossa(&rivale.squadra[0].mosse[0], MOSSA_GRAFFIO);
+			loadMossa(&you.squadra[0].mosse[1], MOSSA_RITIRATA);
+			enemy.squadra[0].id = PKM_CHIMCHAR;
+			enemy.squadra[0].tipo1 = TIPO_FUOCO;
+			enemy.squadra[0].state = STATE_NORMAL;
+			enemy.squadra[0].ps = 21;
+			enemy.squadra[0].psMax = 21;
+			enemy.squadra[0].atk = 11;
+			enemy.squadra[0].bAtk = 11;
+			enemy.squadra[0].def = 9;
+			enemy.squadra[0].bDef = 9;
+			enemy.squadra[0].atkSp = 9;
+			enemy.squadra[0].bAtkSp = 9;
+			enemy.squadra[0].defSp = 7;
+			enemy.squadra[0].bDefSp = 7;
+			enemy.squadra[0].speed = 10;
+			enemy.squadra[0].bSpeed = 10;
+			enemy.squadra[0].precision = 100;
+			enemy.squadra[0].elusion = 0;
+			enemy.squadra[0].numMosse = 2;
+			enemy.squadra[0].exp = 0;
+			enemy.squadra[0].lvl = 5;
+			enemy.squadra[0].nextExp = 35;
+			enemy.squadra[0].lvlToEvolve = 14;
+			enemy.squadra[0].stadio = 0;
+			strcpy(enemy.squadra[0].nome, "Chimchar");
+			enemy.squadra[0].item = FALSE;
+			loadMossa(&enemy.squadra[0].mosse[0], MOSSA_GRAFFIO);
+			loadMossa(&enemy.squadra[0].mosse[1], MOSSA_FULMISGUARDO);
 
 			setColor(COLOR_GREEN);
 		}
@@ -2473,42 +2468,54 @@ void event31()
 			you.squadra[0].ps = 21;
 			you.squadra[0].psMax = 21;
 			you.squadra[0].atk = 11;
+			you.squadra[0].bAtk = 11;
 			you.squadra[0].def = 9;
+			you.squadra[0].bDef = 9;
 			you.squadra[0].atkSp = 9;
+			you.squadra[0].bAtkSp = 9;
 			you.squadra[0].defSp = 7;
+			you.squadra[0].bDefSp = 7;
 			you.squadra[0].speed = 10;
+			you.squadra[0].bSpeed = 10;
 			you.squadra[0].precision = 100;
 			you.squadra[0].elusion = 0;
-			you.squadra[0].numMosse = 1;
+			you.squadra[0].numMosse = 2;
 			you.squadra[0].exp = 0;
 			you.squadra[0].lvl = 5;
 			you.squadra[0].nextExp = 35;
 			you.squadra[0].lvlToEvolve = 14;
+			you.squadra[0].stadio = 0;
 			strcpy(you.squadra[0].nome, "Chimchar");
-			you.squadra[0].catturabile = FALSE;
 			you.squadra[0].item = FALSE;
 			loadMossa(&you.squadra[0].mosse[0], MOSSA_GRAFFIO);
-			rivale.squadra[0].id = PKM_PIPLUP;
-			rivale.squadra[0].tipo1 = TIPO_ACQUA;
-			rivale.squadra[0].state = STATE_NORMAL;
-			rivale.squadra[0].ps = 19;
-			rivale.squadra[0].psMax = 19;
-			rivale.squadra[0].atk = 12;
-			rivale.squadra[0].def = 11;
-			rivale.squadra[0].atkSp = 9;
-			rivale.squadra[0].defSp = 8;
-			rivale.squadra[0].speed = 11;
-			rivale.squadra[0].precision = 100;
-			rivale.squadra[0].elusion = 0;
-			rivale.squadra[0].numMosse = 1;
-			rivale.squadra[0].exp = 0;
-			rivale.squadra[0].lvl = 5;
-			rivale.squadra[0].nextExp = 34;
-			rivale.squadra[0].lvlToEvolve = 16;
-			strcpy(rivale.squadra[0].nome, "Piplup");
-			rivale.squadra[0].catturabile = FALSE;
-			rivale.squadra[0].item = FALSE;
-			loadMossa(&rivale.squadra[0].mosse[0], MOSSA_BOTTA);
+			loadMossa(&you.squadra[0].mosse[1], MOSSA_FULMISGUARDO);
+			enemy.squadra[0].id = PKM_PIPLUP;
+			enemy.squadra[0].tipo1 = TIPO_ACQUA;
+			enemy.squadra[0].state = STATE_NORMAL;
+			enemy.squadra[0].ps = 19;
+			enemy.squadra[0].psMax = 19;
+			enemy.squadra[0].atk = 12;
+			enemy.squadra[0].bAtk = 12;
+			enemy.squadra[0].def = 11;
+			enemy.squadra[0].bDef = 11;
+			enemy.squadra[0].atkSp = 9;
+			enemy.squadra[0].bAtkSp = 9;
+			enemy.squadra[0].defSp = 8;
+			enemy.squadra[0].bDefSp = 8;
+			enemy.squadra[0].speed = 11;
+			enemy.squadra[0].bSpeed = 11;
+			enemy.squadra[0].precision = 100;
+			enemy.squadra[0].elusion = 0;
+			enemy.squadra[0].numMosse = 2;
+			enemy.squadra[0].exp = 0;
+			enemy.squadra[0].lvl = 5;
+			enemy.squadra[0].nextExp = 34;
+			enemy.squadra[0].lvlToEvolve = 16;
+			enemy.squadra[0].stadio = 0;
+			strcpy(enemy.squadra[0].nome, "Piplup");
+			enemy.squadra[0].item = FALSE;
+			loadMossa(&enemy.squadra[0].mosse[0], MOSSA_BOTTA);
+			loadMossa(&enemy.squadra[0].mosse[1], MOSSA_RUGGITO);
 
 			setColor(COLOR_RED);
 		}
@@ -2520,42 +2527,54 @@ void event31()
 			you.squadra[0].ps = 19;
 			you.squadra[0].psMax = 19;
 			you.squadra[0].atk = 12;
+			you.squadra[0].bAtk = 12;
 			you.squadra[0].def = 11;
+			you.squadra[0].bDef = 11;
 			you.squadra[0].atkSp = 9;
+			you.squadra[0].bAtkSp = 9;
 			you.squadra[0].defSp = 8;
+			you.squadra[0].bDefSp = 8;
 			you.squadra[0].speed = 11;
+			you.squadra[0].bSpeed = 11;
 			you.squadra[0].precision = 100;
 			you.squadra[0].elusion = 0;
-			you.squadra[0].numMosse = 1;
+			you.squadra[0].numMosse = 2;
 			you.squadra[0].exp = 0;
 			you.squadra[0].lvl = 5;
 			you.squadra[0].nextExp = 34;
 			you.squadra[0].lvlToEvolve = 16;
+			you.squadra[0].stadio = 0;
 			strcpy(you.squadra[0].nome, "Piplup");
-			you.squadra[0].catturabile = FALSE;
 			you.squadra[0].item = FALSE;
 			loadMossa(&you.squadra[0].mosse[0], MOSSA_BOTTA);
-			rivale.squadra[0].id = PKM_TARTWIG;
-			rivale.squadra[0].tipo1 = TIPO_ERBA;
-			rivale.squadra[0].state = STATE_NORMAL;
-			rivale.squadra[0].ps = 19;
-			rivale.squadra[0].psMax = 19;
-			rivale.squadra[0].atk = 9;
-			rivale.squadra[0].def = 12;
-			rivale.squadra[0].atkSp = 7;
-			rivale.squadra[0].defSp = 10;
-			rivale.squadra[0].speed = 13;
-			rivale.squadra[0].precision = 100;
-			rivale.squadra[0].elusion = 0;
-			rivale.squadra[0].numMosse = 1;
-			rivale.squadra[0].exp = 0;
-			rivale.squadra[0].lvl = 5;
-			rivale.squadra[0].nextExp = 30;
-			rivale.squadra[0].lvlToEvolve = 18;
-			strcpy(rivale.squadra[0].nome, "Tartwig");
-			rivale.squadra[0].catturabile = FALSE;
-			rivale.squadra[0].item = FALSE;
-			loadMossa(&rivale.squadra[0].mosse[0], MOSSA_AZIONE);
+			loadMossa(&you.squadra[0].mosse[1], MOSSA_RUGGITO);
+			enemy.squadra[0].id = PKM_TARTWIG;
+			enemy.squadra[0].tipo1 = TIPO_ERBA;
+			enemy.squadra[0].state = STATE_NORMAL;
+			enemy.squadra[0].ps = 19;
+			enemy.squadra[0].psMax = 19;
+			enemy.squadra[0].atk = 9;
+			enemy.squadra[0].bAtk = 9;
+			enemy.squadra[0].def = 12;
+			enemy.squadra[0].bDef = 12;
+			enemy.squadra[0].atkSp = 7;
+			enemy.squadra[0].bAtkSp = 7;
+			enemy.squadra[0].defSp = 10;
+			enemy.squadra[0].bDefSp = 10;
+			enemy.squadra[0].speed = 13;
+			enemy.squadra[0].bSpeed = 13;
+			enemy.squadra[0].precision = 100;
+			enemy.squadra[0].elusion = 0;
+			enemy.squadra[0].numMosse = 1;
+			enemy.squadra[0].exp = 0;
+			enemy.squadra[0].lvl = 5;
+			enemy.squadra[0].nextExp = 30;
+			enemy.squadra[0].lvlToEvolve = 18;
+			enemy.squadra[0].stadio = 0;
+			strcpy(enemy.squadra[0].nome, "Tartwig");
+			enemy.squadra[0].item = FALSE;
+			loadMossa(&enemy.squadra[0].mosse[0], MOSSA_AZIONE);
+			loadMossa(&enemy.squadra[0].mosse[1], MOSSA_RITIRATA);
 
 			setColor(COLOR_BLUE);
 		}
@@ -2565,7 +2584,7 @@ void event31()
 		printf("!\n");
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Ok, allora io scelgo %s.\n", rivale.nome, rivale.squadra[0].nome);
+		printf("%s: Ok, allora io scelgo %s.\n", enemy.nome, enemy.squadra[0].nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
 		printf("Prof. Rowan: Ok, adesso che siete al sicuro me ne posso andare.\n");
@@ -2595,57 +2614,108 @@ void event31()
 		npcs[1].valid = FALSE;
 		stampaMappa((tile*) mappa, FALSE);
 		delay(500);
-		printf("%s: %s!\n", rivale.nome, you.nome);
+		printf("%s: %s!\n", enemy.nome, you.nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Finalmente lo posso dire!\n", rivale.nome);
+		printf("%s: Finalmente lo posso dire!\n", enemy.nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Ti sfido a una battaglia Pokemon!\n", rivale.nome);
+		printf("%s: Ti sfido a una battaglia Pokemon!\n", enemy.nome);
 		getch();
 
 		you.catturati++;
 		you.numPokemon++;
-		rivale.numPokemon++;
 
-		if(lotta(&rivale, 500, 150))
+		if(lotta(&enemy, 500, 150))
 		{
 			stampaMappa((tile*) mappa, FALSE);
-			printf("%s: Caspita!\n", rivale.nome);
+			printf("%s: Caspita!\n", enemy.nome);
 			getch();
 			stampaMappa((tile*) mappa, FALSE);
-			printf("%s: Mi hai battuto!\n", rivale.nome);
+			printf("%s: Mi hai battuto!\n", enemy.nome);
 			getch();
 		}
 		else
 		{
 			stampaMappa((tile*) mappa, FALSE);
-			printf("%s: Ahahaah!\n", rivale.nome);
+			printf("%s: Ahahaah!\n", enemy.nome);
 			getch();
 			stampaMappa((tile*) mappa, FALSE);
-			printf("%s: Ti ho battuto!\n", rivale.nome);
+			printf("%s: Ti ho battuto!\n", enemy.nome);
 			getch();
 		}
 
+		flags[2] = TRUE;
+		you.dir = DIRECTION_UP;
+
 		delay(1000);
+		idMappa = 1;
+		loadMappa(idMappa, (tile*) mappa, 8, 4);
+
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: %s, e' ora che io parta all'avventura!\n", rivale.nome, you.nome);
+		printf("Mamma: %s!\n", you.nome);
 		getch();
 		stampaMappa((tile*) mappa, FALSE);
-		printf("%s: Ci vediamo!\n", rivale.nome);
+		printf("Mamma: Il prof. Rowan ti ha regalato un pokemon?\n");
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("Mamma: Aspetta, fammeli curare.\n");
+		getch();
+
+		heal();
+		delay(3000);
+
+		event3_1();
+	}
+}
+
+void event32()
+{
+	if(flags[1] && !flags[5])
+	{
+		int i;
+
+		you.y++;
+		npcs[1].x = 9;
+		npcs[1].y = 11;
+		npcs[1].valid = TRUE;
+
+		stampaMappa((tile*) mappa, FALSE);
+		printf("PUM!");
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("%s: %s!", rivale, you.nome);
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("%s: Sto andando al lago, non ho tempo per le spiegazioni,\nci viediamo la.\n", rivale);
+		getch();
+		stampaMappa((tile*) mappa, FALSE);
+		printf("%s: Se arrivi in ritardo ti faccio una multa di 10000000!.\n", rivale);
 		getch();
 
 		for(i = 0; i < 14; i++)
 		{
-			delay(200);
-			(*((tile*) mappa + (npcs[0].y * c) + npcs[0].x)).solid = FALSE;
-			npcs[0].x++;
+            delay(50);
+			(*((tile*) mappa + (npcs[1].y * c) + npcs[1].x)).solid = FALSE;
+			npcs[1].x++;
 			stampaMappa((tile*) mappa, FALSE);
 		}
 
-		(*((tile*) mappa + (npcs[0].y * c) + npcs[0].x)).solid = FALSE;
-		npcs[0].valid = FALSE;
-		flags[2] = TRUE;
+		npcs[1].valid = FALSE;
+		flags[5] = TRUE;
+	}
+}
+
+void heal()
+{
+	int i, j;
+
+	for(i = 0; i < you.numPokemon; i++)
+	{
+		you.squadra[i].ps = you.squadra[i].psMax;
+
+		for(j = 0; j < you.squadra[i].numMosse; j++)
+			you.squadra[i].mosse[j].pp = you.squadra[i].mosse[j].ppMax;
 	}
 }
 
@@ -2744,6 +2814,184 @@ void lvlUp(pokemon *pkm, int y_i)
 	printf("Def. Sp.: %d\n", pkm->defSp);
 	printf("Speed:    %d\n", pkm->speed);
 	getch();
+
+	checkNextMossa(pkm);
+}
+
+void learnMossa(pokemon *pkm, int id)
+{
+	if(pkm->numMosse < 4)
+	{
+		loadMossa(&pkm->mosse[pkm->numMosse], id);
+		system("cls");
+		printf("%s impara %s!\n", pkm->nome, pkm->mosse[pkm->numMosse].nome);
+		(pkm->numMosse)++;
+	}
+	else
+	{
+		int cont = 0;
+		char input = 0;
+		boolean out = FALSE;
+
+		mossa *nuova;
+
+		loadMossa(nuova, id);
+
+		while(!out)
+		{
+			system("cls");
+			printf("%s vorrebbe imparare %s!\n", pkm->nome, nuova->nome);
+			getch();
+			system("cls");
+			printf("Ma %s conosce gia' 4 mosse.\n", pkm->nome);
+			getch();
+
+			do
+			{
+				system("cls");
+				printf("Vuoi fargli dimenticare una mossa?\n");
+
+				if(cont == 0)
+					printf("> Si <\n");
+				else
+					printf("  Si\n");
+
+				if(cont == 1)
+					printf("> No <\n");
+				else
+					printf("  No\n");
+
+				fflush(stdin);
+				input = getch();
+
+				switch(input)
+				{
+				case 72:
+					if(cont == 0)
+						cont = 1;
+					else
+						cont--;
+					break;
+				case 80:
+					if(cont == 1)
+						cont = 0;
+					else
+						cont++;
+					break;
+				}
+			} while(input != 13);
+
+			if(cont == 0)
+			{
+				cont = 0;
+				input = 0;
+				int i;
+
+				do
+				{
+					system("cls");
+					for(i = 0; i < pkm->numMosse; i++)
+					{
+						if(cont == i)
+							printf("> %s <\n", pkm->mosse[i].nome);
+						else
+							printf("  %s\n", pkm->mosse[i].nome);
+
+						if(cont == 4)
+							printf("> Cancella <\n");
+						else
+							printf("  Cancella");
+					}
+
+					fflush(stdin);
+					input = getch();
+
+					switch(input)
+					{
+					case 72:
+						if(cont == 0)
+							cont = 4;
+						else
+							cont--;
+						break;
+					case 80:
+						if(cont == 4)
+							cont = 0;
+						else
+							cont++;
+						break;
+					}
+				} while(input != 13);
+
+				if(cont != 4)
+				{
+					system("cls");
+                    printf("1... ");
+                    getch();
+                    printf("2... ");
+                    getch();
+                    printf("3... e puf!\n");
+                    getch();
+                    system("cls");
+                    printf("%s dimentica %s.\n", pkm->nome, pkm->mosse[cont].nome);
+                    getch();
+                    system("cls");
+                    printf("E al suo posto impara %s!\n", nuova->nome);
+
+                    pkm->mosse[cont] = *nuova;
+                    out = TRUE;
+				}
+			}
+			else
+			{
+				cont = 0;
+				input = 0;
+
+				do
+				{
+					system("cls");
+					printf("Vuoi bloccare l'apprendimento di %s?\n", nuova->nome);
+
+					if(cont == 0)
+						printf("> Si <\n");
+					else
+						printf("  Si\n");
+
+					if(cont == 1)
+						printf("> No <\n");
+					else
+						printf("  No\n");
+
+					fflush(stdin);
+					input = getch();
+
+					switch(input)
+					{
+					case 72:
+						if(cont == 0)
+							cont = 1;
+						else
+							cont--;
+						break;
+					case 80:
+						if(cont == 1)
+							cont = 0;
+						else
+							cont++;
+						break;
+					}
+				} while(input != 13);
+
+				if(cont == 0)
+				{
+					out = TRUE;
+					printf("%s non ha imparato %s!", pkm->nome, nuova->nome);
+				}
+			}
+		}
+	}
+
+	getch();
 }
 
 boolean lotta(allenatore *avversario, int cashWon, int cashLost)
@@ -2751,6 +2999,7 @@ boolean lotta(allenatore *avversario, int cashWon, int cashLost)
 	int i, y_i = 0, r_i = 0, y_n = you.numPokemon, r_n = avversario->numPokemon, cont = 0;
 	char input;
 	boolean finish = FALSE, won = FALSE;
+	allenatore y = you, r = *avversario;
 
 	system("cls");
 	printf("%c\n", SIMBOLO_NPC);
@@ -2909,11 +3158,13 @@ boolean lotta(allenatore *avversario, int cashWon, int cashLost)
 		}
 		else
 		{
+			int r_cont;
+
 			stampaPokemon(avversario, r_i, y_i);
-			cont = rand() % avversario->squadra[r_i].numMosse;
-			printf("%s usa %s!\n", avversario->squadra[r_i].nome, avversario->squadra[r_i].mosse[cont].nome);
+			r_cont = rand() % avversario->squadra[r_i].numMosse;
+			printf("%s usa %s!\n", avversario->squadra[r_i].nome, avversario->squadra[r_i].mosse[r_cont].nome);
 			getch();
-			funzioneMossa(&avversario->squadra[r_i], &you.squadra[y_i], cont);
+			funzioneMossa(&avversario->squadra[r_i], &you.squadra[y_i], r_cont);
 
 			if(you.squadra[y_i].ps <= 0)
 			{
@@ -2935,6 +3186,15 @@ boolean lotta(allenatore *avversario, int cashWon, int cashLost)
 					you.money -= cashLost;
 				else
 					you.money = 0;
+
+				for(i = 0; i < you.numPokemon; i++)
+				{
+					you.squadra[i].bAtk = you.squadra[i].atk;
+					you.squadra[i].bDef = you.squadra[i].def;
+					you.squadra[i].bAtkSp = you.squadra[i].atkSp;
+					you.squadra[i].bDefSp = you.squadra[i].defSp;
+					you.squadra[i].bSpeed = you.squadra[i].speed;
+				}
 
 				won = FALSE;
 				break;
@@ -2975,6 +3235,15 @@ boolean lotta(allenatore *avversario, int cashWon, int cashLost)
 				getch();
 				you.money += cashWon;
 
+				for(i = 0; i < you.numPokemon; i++)
+				{
+					you.squadra[i].bAtk = you.squadra[i].atk;
+					you.squadra[i].bDef = you.squadra[i].def;
+					you.squadra[i].bAtkSp = you.squadra[i].atkSp;
+					you.squadra[i].bDefSp = you.squadra[i].defSp;
+					you.squadra[i].bSpeed = you.squadra[i].speed;
+				}
+
 				won = TRUE;
 				break;
 			}
@@ -2987,7 +3256,7 @@ boolean lotta(allenatore *avversario, int cashWon, int cashLost)
 void funzioneMossa(pokemon *atk, pokemon *victim, int mossaIndex)
 {
 	if(atk->mosse[mossaIndex].id == MOSSA_AZIONE || atk->mosse[mossaIndex].id == MOSSA_BOTTA || atk->mosse[mossaIndex].id == MOSSA_GRAFFIO)
-		victim->ps -= ((atk->atk + atk->atkSp) * atk->mosse[mossaIndex].atk / 10) / (victim->def + victim->defSp);
+		victim->ps -= ((atk->bAtk + atk->bAtkSp) * atk->mosse[mossaIndex].atk / 10) / (victim->bDef + victim->bDefSp);
 
 	if(victim->ps < 0)
 		victim->ps = 0;
